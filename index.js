@@ -59,7 +59,7 @@ ck@2x.png 2x'></a>\
 		return res.status(500).send('Bad dog! '+err);
 	    }
 	    else {
-		return res.send('Woof woof!  Dogbot has been added to your slack team!  Head back there to play with him!');
+		return res.send('Woof woof!  Dogbot has been added to your slack team!  Head back there to play with her!');
 	    }
 	});
 });

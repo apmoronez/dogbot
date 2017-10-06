@@ -1,6 +1,7 @@
 require('dotenv').config();
 var Botkit = require('botkit');
 var Botkit_Redis_Storage = require('./botkit_redis_storage.js');
+var schedule = require('node-schedule');
 
 if (!process.env.DOGBOT_SLACK_CLIENT_ID 
     || !process.env.DOGBOT_SLACK_CLIENT_SECRET 
@@ -22,6 +23,10 @@ var controller = Botkit.slackbot({
     redirectUri: process.env.DOGBOT_SLACK_OAUTH_REDIRECT_URI,
     scopes: ['bot','commands'],
 });
+
+var rule = new schedule.RecurrenceRule();
+rule.hour = 9;
+rule.minute = 0;
 
 controller.setupWebserver(process.env.PORT, function(err, webserver) {
 
@@ -1343,4 +1348,48 @@ controller.hears(['^who.s here (today|tomorrow)'], 'ambient,direct_message,direc
 	    }
 	}
     });
+});
+
+schedule.scheduleJob(rule, function() {
+	controller.storage.teams.all(function(err,teams) {
+		if (err) {
+			throw new Error(err);
+		}
+		else{
+			for(var t in teams){
+				var bot = teams[t].bot;
+				var team = teams[t];
+				controller.storage.teams.getDogsBirthdayOnDate(team.id,new Date(), function(err, res){
+					if(err){
+						return replyGenericError(err, bot, 'Unable to get birthdays', false);
+					}
+					else{
+						if (res.length > 0) {
+							var birthdayArray = [];
+							for (var i=0; i < res.length; i++) {
+								var dogText = res[i].name;
+								if (res[i].location) {
+								dogText += ' (in '+res[i].location+')';
+								}
+								if (res[i].owner) {
+								dogText += ' (with <@'+res[i].owner+'>)';
+								}
+								birthdayArray.push(dogText);
+							}
+							return bot.say({
+								text: birthdayArray.join('\n'),
+								channel: '#wat-dog',
+							});
+						}
+						else {
+						return bot.say({
+							text: 'No dog birthdays today',
+							channel: '#wat-dog',
+						});
+						}
+					}
+				});
+			}
+		}
+	})
 });

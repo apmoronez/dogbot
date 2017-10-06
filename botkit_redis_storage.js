@@ -628,6 +628,29 @@ module.exports = function(config) {
 			    return localThis.getDogsFromIdList(res, slackEntityId, cb);
                         }
                     });
+		},
+		getDogsBirthdayOnDate: function(slackEntityId, dt, cb) {
+		    localThis = this;
+		    dt.setHours(0,0,0,0);
+			var birthdateKeys = [];
+			var birthMonthKeys = [];
+			var birthDayKeys = [];
+			birthMonthKeys.push(localThis.makeDogKey(slackEntityId, 'sets', 'birthMonth:'+(dt.getMonth())+1));
+			birthDayKeys.push(localThis.makeDogKey(slackEntityId, 'sets', 'birthMonth:'+dt.getDate()));
+			j=0;
+			for (var i=0; i < birthDayKeys.length; ++i)
+				if (birthMonthKeys.indexOf(birthDayKeys[i]) != -1)
+					birthdateKeys[j++] = birthDayKeys[i];
+					
+			client.sunion(birthdateKeys, function(err, res) {
+						if (err) {
+							console.log(err);
+							return cb(new Error('Could not get dogs that are here!'), null);
+						}
+						else {
+			    return localThis.getDogsFromIdList(res, slackEntityId, cb);
+                        }
+                    });
 		}
             };
         }(methods[i]);

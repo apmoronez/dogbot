@@ -573,10 +573,10 @@ module.exports = function(config) {
 		    }		    
 		},
 		// getAllMatchingDogsBySetPairwiseMultiple: use this function to search for dogs using multiple indexed fields
-                // and search values.  the search parameters should be passed in as an array of objects where each object
+		// and search values.  the search parameters should be passed in as an array of objects where each object
 		// has a 'key' and 'value' property.  search will be treated as an AND search (i.e. only dogs that match
 		// all parameters will be returned).
-                // returns an array of dogObjects
+		// returns an array of dogObjects
                 getAllMatchingDogsBySetPairwiseMultiple: function(searchParameters, slackEntityId, cb) {
                     var localThis = this;
                     if (searchParameters && searchParameters.length > 0) {
@@ -608,8 +608,8 @@ module.exports = function(config) {
                     }
                 },
 		// getAllMatchingDogsBySet: use this function to search for dogs using a particular indexed field
-                // supports one search field (string) and one search value (string)
-                // returns an array of dogObjects
+		// supports one search field (string) and one search value (string)
+		// returns an array of dogObjects
 		getAllMatchingDogsBySet: function(setName, matchValue, slackEntityId, cb) {
 		    var localThis = this;
 		    client.smembers(localThis.makeDogKey(slackEntityId, 'sets', setName + ':' + matchValue), function(err, res) {
@@ -627,8 +627,8 @@ module.exports = function(config) {
 		},
 		// getRandDog: get a random dog!  supports filters on indexed fields (i.e. get a random good dog, get a random dog born in October) 
 		// the filters parameter should be passed in as an array of objects where each object
-                // has a 'key' and 'value' property.  filters will be treated as an AND search (i.e. only dogs that satisfy
-                // all parameters will be returned).
+		// has a 'key' and 'value' property.  filters will be treated as an AND search (i.e. only dogs that satisfy
+		// all parameters will be returned).
 		// if filters is not passed, all dogs are fair game.
 		// returns a dogObject
 		getRandDog: function(slackEntityId, filters, cb) {
@@ -642,7 +642,7 @@ module.exports = function(config) {
 			    interKeys.push(localThis.makeDogKey(slackEntityId, 'sets', filter.key + ':' + filter.value));
 			    }
 			}
-			if (interkeys.length > 0) {
+			if (interKeys.length > 0) {
 			    client.sinter(interKeys, function(err, res) {
 				if (err) {
 				    console.log(err);

@@ -2,6 +2,7 @@ require('dotenv').config();
 var Botkit = require('botkit');
 var Botkit_Redis_Storage = require('./botkit_redis_storage.js');
 
+// make sure all env vars are set
 if (!process.env.DOGBOT_SLACK_CLIENT_ID 
     || !process.env.DOGBOT_SLACK_CLIENT_SECRET 
     || !process.env.DOGBOT_SLACK_VERIFICATION_TOKEN 
@@ -11,8 +12,9 @@ if (!process.env.DOGBOT_SLACK_CLIENT_ID
     console.log('Error: [DOGBOT_SLACK_CLIENT_ID, DOGBOT_SLACK_CLIENT_SECRET, DOGBOT_SLACK_VERIFICATION_TOKEN, DOGBOT_SLACK_OAUTH_REDIRECT_URI, REDIS_URL, PORT] env vars must all be set!');
     process.exit(1);
 }
+// connect to Redis
 var redis = new Botkit_Redis_Storage({url: process.env.REDIS_URL});
-
+// start up botkit controller with Redis as its persistence
 var controller = Botkit.slackbot({
     storage: redis,
     interactive_replies: true,
@@ -23,6 +25,8 @@ var controller = Botkit.slackbot({
     scopes: ['bot','commands'],
 });
 
+// this simple webpage gives the entry point into the oAuth workflow
+// for a user to add this bot to Slack
 controller.setupWebserver(process.env.PORT, function(err, webserver) {
 
     webserver.get('/',function(req,res) {
@@ -110,6 +114,13 @@ controller.on('create_bot',function(bot,config) {
     }
 });
 
+// generic error message reporter.  use for when you are in a bot workflow
+// and something went wrong and you need to tell the user.  takes:
+// err: the error detail you want thrown in the log
+// bot: the bot that is talking to the user
+// message: the message it is replying to (NOT the message you want to display)
+// interactive: toggles whether this is replying to an interactive message or not
+// the message displayed to the user is a static "Uh oh, something went wrong!"
 function replyGenericError(err, bot, message, interactive) {
     console.log(err);
     if (interactive) {
@@ -120,6 +131,8 @@ function replyGenericError(err, bot, message, interactive) {
     }
 }
 
+// the following helper functions are used for generating options
+// used in various interactive message dropdowns
 function generateYearOptions() {
     var today = new Date();
     var thisYear = today.getFullYear();
@@ -211,6 +224,7 @@ function generateDayOptions(monthName) {
     return dayOptions;
 }
 
+// this function controls the way fields look when displaying dog info
 function generateDogFields(dogObject, displayAll) {
     var displayableFields = [
 	'name',
@@ -325,6 +339,37 @@ function generateDogFields(dogObject, displayAll) {
     return dogFields;
 }
 
+/* getDefaultFieldAttachments
+   note: you should have a good working understanding of Slack interactive attachments
+   before trying to modify anything here.
+
+   this function provides a data-driven way to interact with a user when asking them
+   questions about their dog.  the main split is between the edit and show workflows.
+   in the edit workflow, each field has a interactive (asking the question) and a stated
+   (what happens when the question has been answered).  using this you can chain questions
+   together and end the chain at any point.  the callback_id of the interactive portion
+   determines the stated portion that gets called.  the easiest way to understand this is to
+   take a look how the birthdate workflow behaves: the entry point (birthdate) asks about
+   the year the dog was born, that calls back to the birthYear handler (which sets birthYear
+   with the value the user choose) which asks about the birthMonth, which in turn asks about
+   the birthDay, which ends the workflow.  note that the key you use for a step in the workflow
+   should exactly match the a single dogObject field that you set in response to the workflow.
+   this means you can only set one dogObject field in response to an answered question (this is
+   why the entry point is named "birthdate" because it's just an entry point into a workflow and
+   nothing is being set)
+   parameters:
+   action: "show" or "edit"
+   field: the name of the worflow field you are entering (e.g. "birthdate").
+   dog: a dogObject
+   showInteractive: whether you want to trigger the "interactive" or "stated" workflow
+   choiceText: the text of the choice that the user selected
+
+   other things to note about the structure of the fieldAttachments data: 
+   callback_id should always valued as action:fieldname:dogObject.id
+   the value field in your actions array of the attachment should be valued as "dbValue:displayValue"
+   where dbValue is the data you actually want to store, and displayValue is what you want to show
+   to the user as the representation of that value in a UI. (e.g. "10:October").
+*/
 function getDefaultFieldAttachments(action, field, dog, showInteractive, choiceText) {
     var fieldAttachments = {
 	edit: {
@@ -790,6 +835,7 @@ function getDefaultFieldAttachments(action, field, dog, showInteractive, choiceT
     }
 }
 
+// this function handles the logic around setting each individual dogObject field
 function processDogEdit(slackTeamId, field, dogId, value, cb) {
     controller.storage.teams.getDog({id: dogId}, slackTeamId, function (err, res) {
 	if (err) {
@@ -879,7 +925,10 @@ function processDogEdit(slackTeamId, field, dogId, value, cb) {
 	}
     });
 }
-               
+
+// when a user is presented with an interactive message (e.g. a question to answer) and responds,
+// an interactive_message_callback event is generated.  this function handles the various types of
+// interactive events dogbot offers (scheduling, adding pictures, setting birthday, etc)
 controller.on('interactive_message_callback', function(bot, message) {
     var ids = message.callback_id.split(/\:/);
     var action = ids[0];
@@ -1049,6 +1098,7 @@ controller.on('interactive_message_callback', function(bot, message) {
     }
 });
 
+// this function handles all slash commands
 controller.on('slash_command', function(bot, message) {
     if (message.token == process.env.DOGBOT_SLACK_VERIFICATION_TOKEN) {
 	var command = message.text;
@@ -1260,8 +1310,8 @@ controller.on('slash_command', function(bot, message) {
     }
 });
 
+// this handles events that occur in response to chat messages
 controller.hears(['^who.s a (good|bad) (boy|girl|dog)'], 'ambient,direct_message,direct_mention,mention', function(bot, message) {
-    // YUP, message.team here.  not .team_id, not .team.id, just .team
     var temperment = message.match[1];
     var gender = message.match[2];
     var filters = [];
@@ -1279,6 +1329,7 @@ controller.hears(['^who.s a (good|bad) (boy|girl|dog)'], 'ambient,direct_message
 	filters.push({key: 'gender', value: 0});
     }
 
+    // YUP, message.team here.  not .team_id, not .team.id, just .team, because WHY would Slack be consistent?
     controller.storage.teams.getRandDog(message.team, filters, function (err, res) {
 	if (err) {
 	    return replyGenericError(err, bot, message, false);

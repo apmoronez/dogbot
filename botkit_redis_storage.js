@@ -23,6 +23,16 @@ module.exports = function(config) {
 	'users', 
 	'channels'
     ];
+    // the following are all the currently stored dog fields.
+    // essentially, these are all the fields you should expect
+    // to use when interacting with a dogObject (basically, a JS object)
+    // 'setIndexed' controls whether a Redis set is created for this field
+    // so that you can easily search for dogs via that field
+    // 'required' controls whether a field is required when creating/saving
+    // 'treatAs' identified the data "type" and triggers validation of that
+    // field according to its declared "type".
+    // boolean, integer, datestring are supported values.  any other value is
+    // treated as a string
     var validDogFields = [
 	{
 	    name: 'birthMonth',
@@ -167,6 +177,8 @@ module.exports = function(config) {
 	    var specialDogNameSetKey = '__dogsByName';
 	    var dogPicsSetKey = '__dogPics';
             return {
+		// THESE FUNCTIONS ARE REQUIRED FOR BOTKIT-SLACK PERSISTENCE INTEGRATION
+		// DO NOT CHANGE
                 get: function(id, cb) {
                     client.hget(slackDataNamespace, id, function(err, res) {
                         cb(err, JSON.parse(res));
@@ -200,9 +212,14 @@ module.exports = function(config) {
                 allById: function(cb) {
                     this.all(cb, {type: 'object'});
                 },
+		// END BOTKIT-SLACK PERSISTENCE INTEGRATION FUNCTIONS
+
+		// BEGIN DOGBOT SPECIFIC PERSISTENCE FUNCTIONS
+		// makeDogKey: helper function to generate Redis keys for getting your data
 		makeDogKey: function(slackEntityId, type, key) {
 		    return dogNamespace + ':' + slackEntityId + ':' + type + ':' + key;
 		},
+		// getDog: given a dogObject, gets the associated data for that dog
                 getDog: function(dogObject, slackEntityId, cb) {
 		    var localThis = this;
                     client.hgetall(localThis.makeDogKey(slackEntityId, 'data', dogObject.id), function(err, res) {
@@ -225,6 +242,12 @@ module.exports = function(config) {
 			}
 		    });
                 },
+		// cleanUpSpecialNameSet: all dogs are identified by a unique integer ID
+		// to find them by name instead, a special Redis set is maintained
+		// this function makes sure the set is up to date.  this function should
+		// ALWAYS be called whenever a dog is deleted or its name is updated
+		// if you are using the saveDog or deleteDog functions, this should already
+		// happen
 		cleanUpSpecialNameSet: function(name, slackEntityId, cb) {
                     var localThis = this;
 		    if (null === name) {
@@ -247,6 +270,8 @@ module.exports = function(config) {
                         }
                     });
 		},
+		// saveDog: main function for saving changes to an existing dog.
+		// takes a dogObject
 		saveDog: function(dogObject, slackEntityId, cb) {
 		    var localThis = this;
 		    // this function supports saving any number of fields.  if it's in the object
@@ -402,6 +427,8 @@ module.exports = function(config) {
 			});
                     }
 		},
+		// addDog: main function for creating dogs
+		// takes a dobObject
                 addDog: function(dogObject, slackEntityId, cb) {
 		    var localThis = this;
                     if (!dogObject.id) {
@@ -435,6 +462,8 @@ module.exports = function(config) {
                         return cb(new Error('Dog already has an ID! (use saveDog for existing dogs)'), {});
                     }
                 },
+		// deleteDog: main function for deleting dogs
+		// takes a dogObject
 		deleteDog: function(dogObject, slackEntityId, cb) {
 		    var localThis = this;
 		    localThis.getDog(dogObject, slackEntityId, function(err, res) {
@@ -470,6 +499,8 @@ module.exports = function(config) {
 			}
 		    }); 
 		},
+		// below, basic functions for handling storage and retrieval of dog pictures
+		// pics are stored as simple URLs
 		addPicToDog: function(dogObject, imageURL, slackEntityId, cb) {
 		    client.sadd(this.makeDogKey(slackEntityId, 'sets', dogPicsSetKey + ':' + dogObject.id), imageURL, cb);
 		},
@@ -485,6 +516,7 @@ module.exports = function(config) {
 		getRandPicForDog: function(dogObject, slackEntityId, cb) {
 		    client.srandmember(this.makeDogKey(slackEntityId, 'sets', dogPicsSetKey + ':' + dogObject.id), cb);
 		},
+		// getDogsFromIdList: given a list of dogIds, gets an array of dogObjects for you
 		getDogsFromIdList: function(dogIds, slackEntityId, cb) {
 		    var localThis = this;
                     if (dogIds.length > 0) {
@@ -516,6 +548,9 @@ module.exports = function(config) {
                         return cb(null, []);
                     }
 		},
+		// getAllMatchingDogsBySetMultiple: use this function to search for dogs using a particular indexed field
+		// supports one search field (string) and multiple search values (array)
+		// returns an array of dogObjects
 		getAllMatchingDogsBySetMultiple: function(setName, matchValues, slackEntityId, cb) {
 		    var localThis = this;
                     if (matchValues && matchValues.length > 0) {
@@ -537,6 +572,44 @@ module.exports = function(config) {
 			return cb(null, []);
 		    }		    
 		},
+		// getAllMatchingDogsBySetPairwiseMultiple: use this function to search for dogs using multiple indexed fields
+                // and search values.  the search parameters should be passed in as an array of objects where each object
+		// has a 'key' and 'value' property.  search will be treated as an AND search (i.e. only dogs that match
+		// all parameters will be returned).
+                // returns an array of dogObjects
+                getAllMatchingDogsBySetPairwiseMultiple: function(searchParameters, slackEntityId, cb) {
+                    var localThis = this;
+                    if (searchParameters && searchParameters.length > 0) {
+                        var interKeys = [];
+                        for (var i=0; i < searchParameters.length; i++) {
+			    var search = searchParameters[i];
+			    if (search.hasOwnProperty('key') && null !== search.key &&
+			       search.hasOwnProperty('value') && null !== search.value) {
+				interKeys.push(localThis.makeDogKey(slackEntityId, 'sets', search.key + ':' + search.value));
+			    }
+                        }
+			if (interKeys.length > 0) {
+                            client.sinter(interKeys, function(err, res) {
+				if (err) {
+                                    console.log(err);
+                                    return cb(new Error('Could not get set union!'), null);
+				}
+				else {
+                                    return localThis.getDogsFromIdList(res, slackEntityId, cb);
+				}
+                            });
+			}
+			else {
+			    return cb(null, []);
+			}
+                    }
+                    else {
+                        return cb(null, []);
+                    }
+                },
+		// getAllMatchingDogsBySet: use this function to search for dogs using a particular indexed field
+                // supports one search field (string) and one search value (string)
+                // returns an array of dogObjects
 		getAllMatchingDogsBySet: function(setName, matchValue, slackEntityId, cb) {
 		    var localThis = this;
 		    client.smembers(localThis.makeDogKey(slackEntityId, 'sets', setName + ':' + matchValue), function(err, res) {
@@ -548,31 +621,47 @@ module.exports = function(config) {
 			}		    
 		    });
 		},
+		// getDogNames: returns an array of all the dog names (strings) in the DB (according to the special name set)
 		getDogNames: function(slackEntityId, cb) {
 		    client.smembers(this.makeDogKey(slackEntityId, 'special', specialDogNameSetKey), cb);
 		},
+		// getRandDog: get a random dog!  supports filters on indexed fields (i.e. get a random good dog, get a random dog born in October) 
+		// the filters parameter should be passed in as an array of objects where each object
+                // has a 'key' and 'value' property.  filters will be treated as an AND search (i.e. only dogs that satisfy
+                // all parameters will be returned).
+		// if filters is not passed, all dogs are fair game.
+		// returns a dogObject
 		getRandDog: function(slackEntityId, filters, cb) {
 		    localThis = this;
 		    if (filters && filters.length > 0) {
 			var interKeys = [];
 			for (var i=0; i < filters.length; i++) {
-			    interKeys.push(localThis.makeDogKey(slackEntityId, 'sets', filters[i].key + ':' + filters[i].value));
-			}
-			client.sinter(interKeys, function(err, res) {
-			    if (err) {
-				console.log(err);
-				return cb(new Error('Could not get set intersection!'), null);
+			    var filter = filters[i];
+			    if (filter.hasOwnProperty('key') && null !== filter.key &&
+                               filter.hasOwnProperty('value') && null !== filter.value) {
+			    interKeys.push(localThis.makeDogKey(slackEntityId, 'sets', filter.key + ':' + filter.value));
 			    }
-			    else {
-				if (res.length > 0) {
-				    var dogId = res[Math.floor(Math.random()*res.length)];
-				    return localThis.getDog({id: dogId}, slackEntityId, cb);
+			}
+			if (interkeys.length > 0) {
+			    client.sinter(interKeys, function(err, res) {
+				if (err) {
+				    console.log(err);
+				    return cb(new Error('Could not get set intersection!'), null);
 				}
 				else {
-				    return cb(null, null);
+				    if (res.length > 0) {
+					var dogId = res[Math.floor(Math.random()*res.length)];
+					return localThis.getDog({id: dogId}, slackEntityId, cb);
+				    }
+				    else {
+					return cb(null, null);
+				    }
 				}
-			    }
-			});
+			    });
+			}
+			else {
+			    return cb(null, null);
+			}
 		    }
 		    else {
 			// get any random dog
@@ -607,6 +696,8 @@ module.exports = function(config) {
 			});
 		    }
 		},
+		// getDogsHereOnDate: given a datetime, gets all the dogs that are marked as "here" on that date
+		// returns an array of dogObjects
 		getDogsHereOnDate: function(slackEntityId, dt, cb) {
 		    localThis = this;
 		    dt.setHours(0,0,0,0);

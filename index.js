@@ -364,7 +364,7 @@ function generateDogFields(dogObject, displayAll) {
    showInteractive: whether you want to trigger the "interactive" or "stated" workflow
    choiceText: the text of the choice that the user selected
 
-   other things to note about the structure of the fieldAttachments data: 
+   other things to note about the structure of the fieldAttachments data:
    callback_id should always valued as action:fieldname:dogObject.id
    the value field in your actions array of the attachment should be valued as "dbValue:displayValue"
    where dbValue is the data you actually want to store, and displayValue is what you want to show
@@ -1127,7 +1127,7 @@ controller.on('slash_command', function(bot, message) {
 	    }
 	    else if (action == 'help') {
 		return bot.replyPrivate(message, 'Hey there!  I\'m your friendly neighborhood dogbot!\n'
-			+ 'If you haven\'t invited my bot user to the channel you want to post in, please do so!'
+			+ 'If you haven\'t invited my bot user to the channel you want to post in, please do so!\n'
 			+ 'To add a dog, use `add <dogname>`\n'
 			+ 'I\'ll add that dog to the list and give you an ID.\n'
 			+ 'Remember it!  You\'ll need it later.\n'
